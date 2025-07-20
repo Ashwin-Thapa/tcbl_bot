@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { GoogleGenAI, Content, Part, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, Type, Content, Part } from "@google/genai";
 
 // DOM Elements
 const chatForm = document.getElementById('chat-form') as HTMLFormElement;
@@ -17,9 +17,6 @@ const filePreviewArea = document.getElementById('file-preview-area') as HTMLElem
 const fileNameDisplay = document.getElementById('file-name-display') as HTMLElement;
 const clearFileButton = document.getElementById('clear-file-button') as HTMLButtonElement;
 const chatbotHeader = document.getElementById('chatbot-header') as HTMLElement;
-const chatWidgetContainer = document.getElementById('chat-widget-container') as HTMLElement;
-const closeChatWidgetBtn = document.getElementById('close-chat-widget-btn') as HTMLButtonElement;
-const openChatWidgetBtn = document.getElementById('open-chat-widget-btn') as HTMLButtonElement;
 const quickReplyContainer = document.getElementById('quick-reply-buttons') as HTMLElement;
 const chatSubmitButton = chatForm ? chatForm.querySelector('button[type="submit"]') as HTMLButtonElement : null;
 
@@ -36,86 +33,9 @@ let uploadedImageBase64ForEnhancement: string | null = null;
 let uploadedImageOriginalNameForEnhancement: string | null = null;
 const ENHANCE_IMAGE_COMMAND = "enhance this image";
 
-// Initialize Gemini AI API Client.
-let ai: GoogleGenAI | null = null;
+// Initialize Google Gemini AI Client.
+let ai: GoogleGenAI;
 
-/**
- * -----------------------------------------------------------------------------
- * AI INITIALIZATION FOR GEMINI (LOCAL DEPLOYMENT)
- * -----------------------------------------------------------------------------
- * This function handles initializing the Google Gemini AI client.
- * It expects the API key to be available as an environment variable.
- *
- * For local development, you can create a `.env` file in your project root:
- * API_KEY=YOUR_GEMINI_API_KEY
- *
- * And use a tool like `dotenv` to load it.
- */
-async function initializeAi() {
-    if (!process.env.API_KEY) {
-        console.error("API Key not found. Please set the API_KEY environment variable.");
-        const errorMessage = "AI configuration error: API key is missing. Please contact support.";
-        const chatArea = document.getElementById('chat-messages');
-        if (chatArea) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'flex mb-4 max-w-md justify-start mr-auto';
-            errorDiv.innerHTML = `
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
-                    <strong class="font-bold">Configuration Error!</strong>
-                    <span class="block sm:inline">The AI assistant could not be initialized. The API Key is missing.</span>
-                </div>
-            `;
-            const initialGreetingElement = chatArea.querySelector('.flex.mb-4 > .bg-\\[\\#96B9AD\\]');
-            if (initialGreetingElement && initialGreetingElement.parentElement) {
-                initialGreetingElement.parentElement.remove();
-            }
-            chatArea.appendChild(errorDiv);
-        }
-        return; // UI remains disabled
-    }
-
-    try {
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        // Optional: Make a quick test call to verify the key is valid.
-        await ai.models.generateContent({model: 'gemini-2.5-flash', contents: "test"});
-
-        // AI is ready, enable the chat UI.
-        if (userInput) userInput.disabled = false;
-        if (chatSubmitButton) chatSubmitButton.disabled = false;
-        if (quickOrderBtn) quickOrderBtn.disabled = false;
-        if (uploadButton) uploadButton.disabled = false;
-        console.log("Gemini AI Initialized Successfully.");
-
-    } catch (error) {
-        console.error("Failed to initialize Gemini AI:", error);
-        const chatArea = document.getElementById('chat-messages');
-        if (chatArea) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'flex mb-4 max-w-md justify-start mr-auto';
-            errorDiv.innerHTML = `
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
-                    <strong class="font-bold">Initialization Error!</strong>
-                    <span class="block sm:inline">Could not connect to the AI service. The API key might be invalid.</span>
-                </div>
-            `;
-             const initialGreetingElement = chatArea.querySelector('.flex.mb-4 > .bg-\\[\\#96B9AD\\]');
-            if (initialGreetingElement && initialGreetingElement.parentElement) {
-                initialGreetingElement.parentElement.remove();
-            }
-            chatArea.appendChild(errorDiv);
-        }
-        // UI remains disabled on failure.
-    }
-}
-
-// Helper to convert a base64 data URL to a Gemini Part
-function dataURLtoPart(dataurl: string): Part {
-  const match = dataurl.match(/^data:(.+);base64,(.+)$/);
-  if (!match) {
-    throw new Error('Invalid data URL format');
-  }
-  return { inlineData: { mimeType: match[1], data: match[2] } };
-}
 
 // --- Bot Knowledge Base ---
 const websiteContext = `
@@ -292,6 +212,14 @@ async function fileToBase64DataUrl(file: File): Promise<string> {
     });
 }
 
+function getBase64Parts(dataUrl: string): { mimeType: string; data: string } {
+    const parts = dataUrl.split(';base64,');
+    const mimeType = parts[0].split(':')[1];
+    const data = parts[1];
+    return { mimeType, data };
+}
+
+
 // --- Quick Reply Logic ---
 function showOrderConfirmationQuickReplies() {
     if (!quickReplyContainer) return;
@@ -388,23 +316,29 @@ if (chatForm) {
         addMessageToUI('user', uiMessageParts);
 
         // Prepare message for Gemini API
-        const userMessageParts: Part[] = [];
+        const userMessageContent: Part[] = [];
         if (userMessageText) {
-            userMessageParts.push({ text: userMessageText });
+            userMessageContent.push({ text: userMessageText });
         }
         
         if (selectedFile) {
             try {
-                const imageBase64Data = await fileToBase64DataUrl(selectedFile);
-                userMessageParts.push(dataURLtoPart(imageBase64Data));
+                const imageBase64DataUrl = await fileToBase64DataUrl(selectedFile);
+                const { mimeType, data } = getBase64Parts(imageBase64DataUrl);
+                userMessageContent.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: data
+                    }
+                });
             } catch (error) {
-                console.error("Error converting file to base64 Part:", error);
+                console.error("Error converting file to base64:", error);
                 addMessageToUI('bot', "Sorry, there was an issue processing your uploaded file. Please try again.");
                 clearSelectedFile();
                 return;
             }
         }
-        chatHistory.push({ role: "user", parts: userMessageParts });
+        chatHistory.push({ role: "user", parts: userMessageContent });
         
         userInput.value = '';
         const justUploadedFile = selectedFile;
@@ -415,7 +349,7 @@ if (chatForm) {
             currentOrderStepKey = null;
             currentOrderData = {};
             addMessageToUI('bot', "Okay, the quick order process has been cancelled. How else can I help you today? 👍");
-            chatHistory.push({ role: "model", parts: [{text: "Quick order process cancelled by user."}] });
+            chatHistory.push({ role: "model", parts: [{ text: "Quick order process cancelled by user." }] });
             if (userInput) userInput.placeholder = originalPlaceholder;
             hideQuickReplies();
             return;
@@ -432,7 +366,7 @@ if (chatForm) {
                     const orderAIResp = botResponse as OrderAIResponse;
                     currentOrderData = orderAIResp.updatedOrderData;
                     addMessageToUI('bot', orderAIResp.botResponseText);
-                    chatHistory.push({ role: "model", parts: [{text: orderAIResp.botResponseText}] });
+                    chatHistory.push({ role: "model", parts: [{ text: orderAIResp.botResponseText }] });
 
                     if (orderAIResp.nextQuestionKey === 'summary') {
                         currentOrderStepKey = 'summary_confirmation';
@@ -446,7 +380,7 @@ if (chatForm) {
                 }
             } else { // General Chat
                 if ('text' in botResponse) {
-                    chatHistory.push({ role: "model", parts: [{text: botResponse.text}] });
+                    chatHistory.push({ role: "model", parts: [{ text: botResponse.text }] });
                     addMessageToUI('bot', botResponse.text);
                 } else {
                      throw new Error("Received unexpected response format during general chat.");
@@ -480,7 +414,7 @@ async function handleEnhanceImageRequest() {
     }
 
     addMessageToUI('user', [{ text: "Please enhance the uploaded image." }]);
-    chatHistory.push({ role: "user", parts: [{text: `User requested enhancement for image: ${uploadedImageOriginalNameForEnhancement}`}] });
+    chatHistory.push({ role: "user", parts: [{ text: `User requested enhancement for image: ${uploadedImageOriginalNameForEnhancement}` }] });
 
     typingIndicator.classList.remove('hidden');
     if (typingIndicatorText) typingIndicatorText.textContent = "🎨 Crafting enhancement idea...";
@@ -493,59 +427,72 @@ async function handleEnhanceImageRequest() {
     hideQuickReplies();
 
     try {
-        // Step 1: Generate a creative prompt for Imagen using Gemini
-        const promptGenerationSystemInstruction = `You are an expert image editor. Based on the user's uploaded image, generate a detailed text prompt for an AI image generation model (like Imagen) to create an 'enhanced' version. The enhanced version should have improved vibrancy, clarity, sharpness, and overall aesthetic appeal. If it's food, make it look more delicious. If it's a person, enhance their features naturally. If it's a landscape, make the colors rich and details crisp. The generated prompt should describe the image's content and append these enhancement qualities. For example, for an image of 'a cat on a red sofa', the prompt might be 'A photorealistic cat sleeping on a vibrant red sofa, detailed fur, sharp focus, warm and inviting lighting, enhanced for aesthetic appeal.' Output only the generated prompt text, nothing else.`;
-        const imagePart = dataURLtoPart(imageBase64ToEnhance);
+        const { mimeType, data } = getBase64Parts(imageBase64ToEnhance);
 
+        // Step 1: Generate prompt for Imagen using Gemini
+        const promptGenerationSystemInstruction = `You are an expert image editor. Based on the uploaded image, generate a detailed text prompt that could be given to an AI image generation model (like Imagen) to create an 'enhanced' version of this image. The enhanced version should have improved vibrancy, clarity, sharpness, and overall aesthetic appeal. If it's a photo of food, make it look more delicious. If it's a person, make them look their best naturally. If it's a landscape, make the colors rich and details crisp. The generated prompt should describe the content of the image and then append these enhancement qualities. For example, if the image is 'a cat sleeping on a red sofa', the prompt might be 'A cat sleeping on a red sofa, detailed fur, vibrant red, sharp focus, warm lighting, enhanced photorealism.' Output only the generated prompt. Do not add any conversational fluff.`;
+        
         const promptResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
+                role: 'user',
                 parts: [
                     { text: "Generate an enhancement prompt for this image." },
-                    imagePart,
+                    { inlineData: { mimeType, data } }
                 ]
             },
             config: {
-                systemInstruction: promptGenerationSystemInstruction,
+                systemInstruction: promptGenerationSystemInstruction
             }
         });
-        
-        const imagenPrompt = promptResponse.text.trim();
-        if (!imagenPrompt) {
+        const enhancementPrompt = promptResponse.text;
+
+        if (!enhancementPrompt) {
             throw new Error("AI failed to generate a creative prompt for the image.");
         }
         
         addMessageToUI('bot', `Ok, I have an idea for enhancing "${originalFileName}"! Working on it...`);
-        chatHistory.push({ role: "model", parts: [{text: `Generated Imagen prompt: ${imagenPrompt}`}] });
+        chatHistory.push({ role: "model", parts: [{ text: `Generated enhancement prompt: ${enhancementPrompt}`}]});
 
         if (typingIndicatorText) typingIndicatorText.textContent = "✨ Generating enhanced image...";
         
-        // Step 2: Generate image using Imagen
+        // Step 2: Generate image using Imagen 3
         const imageResponse = await ai.models.generateImages({
             model: 'imagen-3.0-generate-002',
-            prompt: imagenPrompt,
+            prompt: enhancementPrompt,
             config: {
               numberOfImages: 1,
-              outputMimeType: 'image/jpeg',
+              outputMimeType: 'image/png',
               aspectRatio: '1:1',
             },
         });
         
-        const base64ImageBytes: string = imageResponse.generatedImages[0].image.imageBytes;
-        const imageUrl = `data:image/jpeg;base64,${base64ImageBytes}`;
+        const base64ImageBytes = imageResponse.generatedImages[0]?.image.imageBytes;
 
-        const enhancedImageContent: EnhancedImageBotContent = {
-            text: "Ta-da! Here's an AI-enhanced version:",
-            enhancedImageUrl: imageUrl,
-            originalFileName: originalFileName
-        };
-        addMessageToUI('bot', enhancedImageContent);
-        chatHistory.push({ role: "model", parts: [{text: "Displayed enhanced image."}, dataURLtoPart(imageUrl)]});
+        if (base64ImageBytes) {
+            const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
+            const enhancedImageContent: EnhancedImageBotContent = {
+                text: "Ta-da! Here's an AI-enhanced version:",
+                enhancedImageUrl: imageUrl,
+                originalFileName: originalFileName
+            };
+            addMessageToUI('bot', enhancedImageContent);
+            const { mimeType: enhancedMimeType, data: enhancedBase64 } = getBase64Parts(imageUrl);
+            chatHistory.push({
+                role: "model",
+                parts: [
+                    { text: "Displayed enhanced image." },
+                    { inlineData: { mimeType: enhancedMimeType, data: enhancedBase64 } }
+                ]
+            });
+        } else {
+            throw new Error("Imagen did not return image data.");
+        }
 
     } catch (error) {
         console.error("Error during image enhancement:", error);
         addMessageToUI('bot', `Oops! We encountered an issue while trying to enhance your image. This might be a temporary problem. Please try again in a few moments. Error: ${(error as Error).message}`);
-        chatHistory.push({ role: "model", parts: [{text: `Error during enhancement: ${(error as Error).message}`}] });
+        chatHistory.push({ role: "model", parts: [{ text: `Error during enhancement: ${(error as Error).message}` }] });
     } finally {
         typingIndicator.classList.add('hidden');
         if (typingIndicatorText) typingIndicatorText.textContent = "Assistant is typing...";
@@ -596,7 +543,7 @@ function simulateSendOrderNotification(orderData: { [key: string]: string }, ful
     fullChatHistory.forEach(entry => {
         emailBody += `\n[${entry.role.toUpperCase()}]\n`;
         entry.parts.forEach(part => {
-             if ('text' in part && part.text) {
+            if ('text' in part && part.text) {
                 emailBody += `${part.text}\n`;
             } else if ('inlineData' in part) {
                  emailBody += `(User attached an image)\n`;
@@ -639,11 +586,11 @@ async function processOrderConfirmation(userConfirmation: string) {
         await triggerOrderCelebrationAnimation();
         const finalMessage = `Thank you, ${currentOrderData['name'] || 'customer'}! We've received your quick order request. Our team will review your order and get in touch with you at ${currentOrderData['phone'] || 'the provided number'} within approximately 4 working hours (during 10 AM - 8 PM) to confirm the details, provide a final quote, and arrange payment. Please note, this order is tentative until confirmed by our team. 🎉`;
         addMessageToUI('bot', finalMessage);
-        chatHistory.push({ role: "model", parts: [{text: "Order confirmed by user. Final instructions given."}] });
+        chatHistory.push({ role: "model", parts: [{ text: "Order confirmed by user. Final instructions given." }] });
         simulateSendOrderNotification(currentOrderData, chatHistory);
     } else {
         addMessageToUI('bot', "Okay, the order request has been cancelled. Feel free to start a new quick order or ask any other questions! 😊");
-        chatHistory.push({ role: "model", parts: [{text: "User declined order summary and order was cancelled."}] });
+        chatHistory.push({ role: "model", parts: [{ text: "User declined order summary and order was cancelled." }] });
     }
 
     isOrdering = false;
@@ -762,33 +709,31 @@ function createSystemInstructionForOrderParsing(
     earliestDeliveryDate.setDate(today.getDate() + 3);
     const earliestDateFormatted = earliestDeliveryDate.toLocaleDateString(undefined, options);
 
-    return `You are an intelligent order-taking assistant for "TheCakeBoxLady". Your goal is to provide a friendly and efficient ordering experience by guiding the user through placing a custom cake order.
-Your task is to populate a JSON object based on the conversation.
+    return `You are an intelligent order-taking assistant for "TheCakeBoxLady". Your goal is to provide a friendly and efficient ordering experience.
+Your task is to guide the user through placing a custom cake order by collecting specific pieces of information.
 The user's latest message is: "${latestUserMessage}".
-${imageProvided ? "The user has also uploaded an image for the design. Acknowledge this (e.g., 'Thanks for the design image!')." : ""}
+${imageProvided ? "The user has also uploaded an image. Acknowledge this image (e.g., 'Thanks for the design image!')." : ""}
 
-**Order Fields to Collect:**
+The complete list of order questions/fields is:
 ${stringifiedOrderQuestions}
 'essential' fields are required.
 
-**Current Order Data:**
+The current state of the order is:
 ${stringifiedOrderData}
 
-**Your Instructions:**
-1.  Analyze the user's latest message to extract information for ANY of the order fields.
-2.  Update the 'Current Order Data' with any newly extracted information in the 'updatedOrderData' field of your JSON response.
-3.  Determine the NEXT logical question to ask. Prioritize empty 'essential' fields.
-4.  If all 'essential' fields are filled, it's time for a summary.
-    - Set 'nextQuestionKey' to "summary".
-    - 'botResponseText' must be a friendly, comprehensive summary of ALL collected data, formatted with newlines (e.g., "Okay, let's review your order: 🎂\\nOccasion: Birthday\\nFlavor: Chocolate..."). Conclude by asking for confirmation ("Does this look correct?").
-5.  If not ready for summary:
-    - Set 'nextQuestionKey' to the key of the next question to ask (e.g., "flavor").
-    - 'botResponseText' should be your natural language question for that field.
+Your goal:
+1. Analyze the user's latest message to extract information for ANY of the order fields.
+2. Update the 'current state of the order' with any newly extracted information.
+3. Determine the NEXT logical question to ask based on empty 'essential' fields first.
+4. If all 'essential' fields are filled, and other common fields are addressed, proceed to summary.
+5. If it's time for a summary:
+   - Set 'nextQuestionKey' to "summary".
+   - 'botResponseText' must be a comprehensive summary of ALL collected 'updatedOrderData', formatted with newlines (e.g., "Okay, let's review your order: 🎂\\nOccasion: Birthday\\nFlavor: Chocolate..."). Then, ask for confirmation ("Does this look correct?").
+6. If not ready for summary, set 'nextQuestionKey' to the key of the next question. 'botResponseText' should be your natural language question for that field.
 
-**Date Validation Rule:** Today is ${currentDateFormatted}. Our lead time is 2-3 days, so the earliest possible delivery is ${earliestDateFormatted}. If a user requests an earlier date, politely explain the lead time and suggest the earliest possible date. Normalize the date into a clear format (e.g., Month Day, Year).
+Date Validation Rule: Today is ${currentDateFormatted}. Our lead time is 2-3 days, so the earliest possible delivery is ${earliestDateFormatted}. If a user requests an earlier date, politely explain the lead time and suggest the earliest possible date. Normalize the date into a clear format (e.g., Month Day, Year).
 
-Your response will be structured as a JSON object, adhering to the schema provided.
-`;
+YOU MUST RESPOND WITH A VALID JSON OBJECT ONLY that adheres to the provided schema.`;
 }
 
 // --- Main AI Response Generation ---
@@ -804,8 +749,6 @@ async function getBotResponse(
         throw new Error("Gemini AI client is not initialized.");
     }
     
-    const model = "gemini-2.5-flash";
-    
     if (isOrderingFlow) {
         const systemInstruction = createSystemInstructionForOrderParsing(currentOrder, orderQs, latestUserMessage, imageProvided);
         const orderResponseSchema = {
@@ -813,32 +756,31 @@ async function getBotResponse(
             properties: {
                 updatedOrderData: {
                     type: Type.OBJECT,
-                    description: "An object containing all the order details collected so far."
+                    description: "An object containing all the key-value pairs of order details collected so far."
                 },
                 nextQuestionKey: {
                     type: Type.STRING,
-                    description: "The key of the next question to ask, or 'summary'."
+                    description: "The key of the next question to ask the user, or 'summary' if all essential information is collected."
                 },
                 botResponseText: {
                     type: Type.STRING,
-                    description: "The bot's natural language response to the user."
+                    description: "The natural language response to send back to the user."
                 },
             },
-            required: ['updatedOrderData', 'nextQuestionKey', 'botResponseText'],
+            required: ['updatedOrderData', 'nextQuestionKey', 'botResponseText']
         };
-        
-        const response = await ai.models.generateContent({
-            model: model,
-            contents: history,
-            config: {
-                systemInstruction: systemInstruction,
-                responseMimeType: "application/json",
-                responseSchema: orderResponseSchema,
-                temperature: 0.5,
-            }
-        });
 
         try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: history,
+                config: {
+                    systemInstruction: systemInstruction,
+                    responseMimeType: "application/json",
+                    responseSchema: orderResponseSchema
+                }
+            });
+
             const parsedResponse: OrderAIResponse = JSON.parse(response.text);
             if (parsedResponse && typeof parsedResponse.updatedOrderData === 'object' && typeof parsedResponse.botResponseText === 'string') {
                 return parsedResponse;
@@ -846,15 +788,15 @@ async function getBotResponse(
                  throw new Error("Parsed JSON response is missing required fields.");
             }
         } catch (e) {
-            console.error("Failed to parse JSON response from Gemini:", e, "\nRaw response:", response.text);
+            console.error("Failed to get or parse JSON response from Gemini:", e, "\nLast history item:", history.slice(-1));
             return {
                 botResponseText: "I'm having a little trouble with the order details right now. Could you please rephrase that?",
                 nextQuestionKey: currentOrderStepKey,
                 updatedOrderData: currentOrder
             };
         }
-    } else {
-         const systemInstruction = `You are a friendly, helpful, and concise AI shopping assistant for "TheCakeBoxLady", a home bakery in Siliguri. Your persona is warm, inviting, and slightly playful. Use emojis to enhance the tone 🎂🍰✨.
+    } else { // General Chat
+        const systemInstruction = `You are a friendly, helpful, and concise AI shopping assistant for "TheCakeBoxLady", a home bakery in Siliguri. Your persona is warm, inviting, and slightly playful. Use emojis to enhance the tone 🎂🍰✨.
 Your role is to answer user questions based *strictly* on the provided "Website Context".
 Do not invent details. If the answer is not in the context, say you don't have that information and suggest contacting the bakery directly.
 Gently guide users towards ordering. If they ask about cakes, mention they can start a "Quick Order" using the button.
@@ -865,15 +807,16 @@ Do not confuse an uploaded image for enhancement with an order, unless the user 
 ${websiteContext}
 `;
         const response = await ai.models.generateContent({
-            model: model,
+            model: 'gemini-2.5-flash',
             contents: history,
             config: {
-                systemInstruction: systemInstruction,
-                temperature: 0.7,
-            },
+                systemInstruction: systemInstruction
+            }
         });
         
-        return { text: response.text };
+        return {
+            text: response.text.trim()
+        };
     }
 }
 
@@ -891,7 +834,7 @@ if (quickOrderBtn) {
         
         const firstQuestion = orderQuestions[0].question;
         addMessageToUI('bot', firstQuestion);
-        chatHistory.push({ role: "model", parts: [{text: firstQuestion}] });
+        chatHistory.push({ role: "model", parts: [{text: firstQuestion }] });
 
         if (userInput) {
             userInput.placeholder = "Type your answer here...";
@@ -933,21 +876,6 @@ if (chatbotHeader) {
     chatbotHeader.addEventListener('click', handleRefreshChat);
 }
 
-if (chatWidgetContainer && openChatWidgetBtn && closeChatWidgetBtn) {
-    const showWidget = () => {
-        chatWidgetContainer.classList.remove('hidden');
-        openChatWidgetBtn.classList.add('hidden');
-        setTimeout(() => userInput?.focus(), 100);
-    };
-    const hideWidget = () => {
-        chatWidgetContainer.classList.add('hidden');
-        openChatWidgetBtn.classList.remove('hidden');
-    };
-    hideWidget();
-    openChatWidgetBtn.addEventListener('click', showWidget);
-    closeChatWidgetBtn.addEventListener('click', hideWidget);
-}
-
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -955,5 +883,40 @@ document.addEventListener('DOMContentLoaded', () => {
     if (chatSubmitButton) chatSubmitButton.disabled = true;
     if (quickOrderBtn) quickOrderBtn.disabled = true;
     if (uploadButton) uploadButton.disabled = true;
-    initializeAi();
+
+    // --- AI INITIALIZATION FOR GEMINI ---
+    try {
+        if (!process.env.API_KEY) {
+            throw new Error("API Key not found. This value must be provided in the 'API_KEY' environment variable for the app to function.");
+        }
+
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+        // AI is ready, enable the chat UI.
+        if (userInput) userInput.disabled = false;
+        if (chatSubmitButton) chatSubmitButton.disabled = false;
+        if (quickOrderBtn) quickOrderBtn.disabled = false;
+        if (uploadButton) uploadButton.disabled = false;
+        console.log("AI Initialized Successfully.");
+
+    } catch (error) {
+        console.error("Failed to initialize AI:", error);
+        const chatArea = document.getElementById('chat-messages');
+        if (chatArea) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'flex mb-4 max-w-md justify-start mr-auto';
+            errorDiv.innerHTML = `
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+                    <strong class="font-bold">Configuration Error!</strong>
+                    <span class="block sm:inline">${(error as Error).message}</span>
+                </div>
+            `;
+            const initialGreetingElement = chatArea.querySelector('.flex.mb-4 > .bg-\\[\\#96B9AD\\]');
+            if (initialGreetingElement && initialGreetingElement.parentElement) {
+                initialGreetingElement.parentElement.remove();
+            }
+            chatArea.appendChild(errorDiv);
+        }
+        // UI remains disabled on failure.
+    }
 });
