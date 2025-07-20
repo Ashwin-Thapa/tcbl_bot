@@ -1,0 +1,177 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+.font-brand {
+    font-family: 'Playfair Display', serif;
+}
+/* Custom scrollbar for chat area */
+#chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+#chat-messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+#chat-messages::-webkit-scrollbar-thumb {
+    background: #96B9AD; /* Main color */
+    border-radius: 10px;
+}
+#chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #84a89c; /* Darker shade */
+}
+
+/* Added transition for opacity to enable smooth refresh effect */
+#chat-messages {
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* Modal styles */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+    justify-content: center;
+    align-items: center;
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: auto;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    width: 90%;
+    max-width: 400px;
+    position: relative;
+}
+.close-button {
+    color: #aaa;
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 28px;
+    font-weight: bold;
+}
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Styles for the open chat button, mimicking Tailwind's approach */
+#open-chat-widget-btn {
+    /* position: fixed; bottom-5 right-5 are handled by Tailwind classes in HTML */
+    /* background-color: #96B9AD; text-white p-4 rounded-full shadow-lg are handled by Tailwind classes */
+    /* transition: background-color 0.3s ease; is implicitly handled by Tailwind's transition-colors */
+    z-index: 999; /* Ensure it's above other content but below an open modal/widget if needed */
+    /* display: none; /* Initial state set via inline style in HTML */
+}
+
+/* Ensure the open chat button uses flex for icon centering if not using Tailwind's flex */
+#open-chat-widget-btn {
+    display: flex; /* This might be set inline, but good to have if classes are removed */
+    align-items: center;
+    justify-content: center;
+}
+
+/* Animation for user message pop-in */
+.message-pop-in {
+    animation: popIn 0.3s ease-out forwards;
+}
+
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+#quick-reply-buttons button {
+    transition: all 0.2s ease-in-out;
+}
+#quick-reply-buttons button:hover {
+    transform: translateY(-2px) scale(1.03); /* Added scale for more pop */
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1); /* Slightly larger shadow on hover */
+}
+
+/* Ensure quick reply buttons can wrap if many are present or on small screens */
+#quick-reply-buttons {
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons to wrap */
+    gap: 0.5rem; /* Space between buttons, Tailwind `gap-2` equivalent */
+    justify-content: center; /* Center the buttons */
+}
+
+/* Order Celebration Animation Styles */
+#order-celebration-animation {
+    /* Tailwind classes handle most of this: fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[2000] */
+    /* Ensure display: none is handled by inline style or JS */
+}
+
+#celebration-cake-container {
+    transform: scale(0);
+    opacity: 0;
+}
+
+#celebration-thank-you {
+    transform: scale(0.5);
+    opacity: 0;
+}
+
+.cake-pop-in {
+    animation: cakePopInEffect 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+.cake-blast-out {
+    animation: cakeBlastOutEffect 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+.thank-you-reveal {
+    animation: thankYouRevealEffect 0.6s ease-out forwards 0.2s; /* Delay to sync with cake blast */
+}
+
+@keyframes cakePopInEffect {
+    0% {
+        transform: scale(0) rotate(-30deg);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+@keyframes cakeBlastOutEffect {
+    0% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    20% {
+        transform: scale(1.1) rotate(5deg); /* Slight jiggle */
+    }
+    100% {
+        transform: scale(0) rotate(30deg);
+        opacity: 0;
+    }
+}
+
+@keyframes thankYouRevealEffect {
+    0% {
+        transform: scale(0.5) translateY(20px);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+}
